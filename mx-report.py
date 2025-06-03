@@ -1,4 +1,4 @@
-# mx_domain_analyzer.py
+# mx-report.py
 # A script to analyze domain MX records, SPF, DMARC, and DKIM settings.
 #
 # To run this script, you'll need to install the dnspython library:
