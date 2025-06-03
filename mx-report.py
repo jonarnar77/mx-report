@@ -548,6 +548,76 @@ def print_report_html(domain, mx_info, spf_info, dmarc_info, dkim_info, health_s
     def H(text):
         return html.escape(str(text) if text is not None else "")
 
+    mx_warnings = "".join(f"<p class='warning'>[MX WARNING] {H(w)}</p>" for w in mx_info['warnings'])
+    if mx_info['records']:
+        mx_rows = "".join(
+            f"<tr><td>{H(r['preference'])}</td><td>{H(r['exchange'])}</td></tr>" for r in mx_info['records']
+        )
+        mx_table = f"<table><tr><th>Preference</th><th>Exchange</th></tr>{mx_rows}</table>"
+    else:
+        mx_table = "<p>No MX records found or error fetching them.</p>"
+
+    spf_warnings = "".join(f"<p class='warning'>[SPF WARNING] {H(w)}</p>" for w in spf_info['warnings'])
+    spf_recs = "".join(f"<p class='recommendation'>[SPF RECOMMENDATION] {H(r)}</p>" for r in spf_info['recommendations'])
+    spf_raw = (
+        f'<p><strong>Raw SPF Record:</strong></p><div class="record-raw">{H(spf_info["record"])}</div>'
+        if spf_info["record"]
+        else "<p>No SPF record found.</p>"
+    )
+    spf_components = (
+        "<h3>Parsed SPF Components:</h3><ul>"
+        + "".join(
+            f'<li><strong>{H(c["raw"])}:</strong> {H(c["explanation"])}</li>'
+            for c in spf_info.get("parsed_components", [])
+        )
+        + "</ul>"
+        if spf_info.get("parsed_components")
+        else ""
+    )
+
+    dmarc_warnings = "".join(f"<p class='warning'>[DMARC WARNING] {H(w)}</p>" for w in dmarc_info['warnings'])
+    dmarc_recs = "".join(f"<p class='recommendation'>[DMARC RECOMMENDATION] {H(r)}</p>" for r in dmarc_info['recommendations'])
+    dmarc_raw = (
+        f'<p><strong>Raw DMARC Record:</strong></p><div class="record-raw">{H(dmarc_info["record"])}</div>'
+        if dmarc_info["record"]
+        else "<p>No DMARC record found.</p>"
+    )
+    dmarc_tags = (
+        "<h3>Parsed DMARC Tags:</h3><ul>"
+        + "".join(
+            f'<li><strong>{H(key)}:</strong> {H(value)}</li>'
+            for key, value in dmarc_info.get("parsed", {}).items()
+        )
+        + "</ul>"
+        if dmarc_info.get("parsed")
+        else ""
+    )
+
+    dkim_warnings = "".join(f"<p class='warning'>[DKIM WARNING] {H(w)}</p>" for w in dkim_info['warnings'])
+    dkim_recs = "".join(f"<p class='recommendation'>[DKIM RECOMMENDATION] {H(r)}</p>" for r in dkim_info['recommendations'])
+    if dkim_info.get("selectors_checked"):
+        dkim_list = "".join(
+            (
+                f"<li><strong>Selector:</strong> {H(s['selector'])}._domainkey.{H(domain)}"
+                f"<br/><strong>Status:</strong> {'FOUND' if s['found'] else 'Not Found/Error'}<br/>"
+                + (
+                    f"<strong>Record:</strong> <div class='record-raw'>{H(s['record'][:100] + '...' if s['record'] and len(s['record']) > 100 else s.get('record'))}</div>"
+                    if s["found"]
+                    else ""
+                )
+                + (
+                    f"<span class='error'><strong>Error:</strong> {H(s['error'])}</span>" if s["error"] else ""
+                )
+                + "</li>"
+            )
+            for s in dkim_info.get("selectors_checked", [])
+        )
+        dkim_html = f"<ul>{dkim_list}</ul>"
+    else:
+        dkim_html = "<p>No DKIM selectors were checked or results to display.</p>"
+
+    details_list = "".join(f"<li>{H(detail)}</li>" for detail in health_summary_data["details"])
+
     html_output = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -579,48 +649,49 @@ def print_report_html(domain, mx_info, spf_info, dmarc_info, dkim_info, health_s
     <div class="report-section">
         <h2>MX Records</h2>
         <p><strong>Provider Detected:</strong> {H(mx_info['provider'])}</p>
-        {"".join([f"<p class='warning'>[MX WARNING] {H(w)}</p>" for w in mx_info['warnings']])}
-        {f"<table><tr><th>Preference</th><th>Exchange</th></tr>{''.join([f'<tr><td>{H(r['preference'])}</td><td>{H(r['exchange'])}</td></tr>' for r in mx_info['records']])}</table>" if mx_info['records'] else "<p>No MX records found or error fetching them.</p>"}
+        {mx_warnings}
+        {mx_table}
     </div>
 
     <!-- SPF Record -->
     <div class="report-section">
         <h2>SPF Record</h2>
-        {"".join([f"<p class='warning'>[SPF WARNING] {H(w)}</p>" for w in spf_info['warnings']])}
-        {"".join([f"<p class='recommendation'>[SPF RECOMMENDATION] {H(rec)}</p>" for rec in spf_info['recommendations']])}
-        {f'<p><strong>Raw SPF Record:</strong></p><div class="record-raw">{H(spf_info["record"])}</div>' if spf_info["record"] else "<p>No SPF record found.</p>"}
-        {f"<h3>Parsed SPF Components:</h3><ul>{''.join([f'<li><strong>{H(c["raw"])}:</strong> {H(c["explanation"])}</li>' for c in spf_info.get('parsed_components', [])])}</ul>" if spf_info.get("parsed_components") else ""}
+        {spf_warnings}
+        {spf_recs}
+        {spf_raw}
+        {spf_components}
     </div>
 
     <!-- DMARC Record -->
     <div class="report-section">
         <h2>DMARC Record</h2>
-        {"".join([f"<p class='warning'>[DMARC WARNING] {H(w)}</p>" for w in dmarc_info['warnings']])}
-        {"".join([f"<p class='recommendation'>[DMARC RECOMMENDATION] {H(rec)}</p>" for rec in dmarc_info['recommendations']])}
-        {f'<p><strong>Raw DMARC Record:</strong></p><div class="record-raw">{H(dmarc_info["record"])}</div>' if dmarc_info["record"] else "<p>No DMARC record found.</p>"}
-        {f"<h3>Parsed DMARC Tags:</h3><ul>{''.join([f'<li><strong>{H(key)}:</strong> {H(value)}</li>' for key, value in dmarc_info.get('parsed', {}).items()])}</ul>" if dmarc_info.get("parsed") else ""}
+        {dmarc_warnings}
+        {dmarc_recs}
+        {dmarc_raw}
+        {dmarc_tags}
     </div>
 
     <!-- DKIM Records -->
     <div class="report-section">
         <h2>DKIM Records (Common Selectors Checked)</h2>
-        {"".join([f"<p class='warning'>[DKIM WARNING] {H(w)}</p>" for w in dkim_info['warnings']])}
-        {"".join([f"<p class='recommendation'>[DKIM RECOMMENDATION] {H(rec)}</p>" for rec in dkim_info['recommendations']])}
-        {f"<ul>{''.join([f'<li><strong>Selector:</strong> {H(s["selector"])}._domainkey.{H(domain)}<br/><strong>Status:</strong> {'FOUND' if s["found"] else 'Not Found/Error'}<br/>' + (f'<strong>Record:</strong> <div class="record-raw">{H(s["record"][:100] + "..." if s["record"] and len(s["record"]) > 100 else s.get("record"))}</div>' if s["found"] else '') + (f'<span class="error"><strong>Error:</strong> {H(s["error"])}</span>' if s["error"] else '') + '</li>' for s in dkim_info.get('selectors_checked', [])])}</ul>" if dkim_info.get('selectors_checked') else "<p>No DKIM selectors were checked or results to display.</p>"}
+        {dkim_warnings}
+        {dkim_recs}
+        {dkim_html}
     </div>
 
     <!-- Overall Health Summary -->
     <div class="report-section">
         <h2>Overall Health Summary</h2>
         <p><strong>Status:</strong> <span class="status-{H(health_summary_data['status'].replace(' ', '-'))}">{H(health_summary_data['status'])}</span></p>
-        <p><strong>Overall Score:</strong> {H(f'{health_summary_data["score"]:.1f}')} (out of 4.0 possible)</p>
+        <p><strong>Overall Score:</strong> {H(f"{health_summary_data['score']:.1f}")} (out of 4.0 possible)</p>
         <p><strong>Identified Issues Count:</strong> {H(health_summary_data['issues_count'])}</p>
         <h3>Details:</h3>
-        <ul>{"".join([f"<li>{H(detail)}</li>" for detail in health_summary_data['details']])}</ul>
+        <ul>{details_list}</ul>
     </div>
 </body>
 </html>"""
     print(html_output)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Analyze domain email health (MX, SPF, DMARC, DKIM).")
